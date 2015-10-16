@@ -1,0 +1,343 @@
+=== BASIC DESCRIPTION ===
+
+CyborgNet is a protocol intended to be used for linking together implants
+installed inside the human body, enabling them to communicate with
+each other and with other cyborgs.  The protocol is based on a main hub
+server and links together various modules, implemented in either software
+or hardware, with pub/sub channels known as feeds. It is designed to
+require minimal CPU time on small embedded devices such as AVR chips and
+to operate other various transport layers including TCP/IP and bluetooth.
+
+
+
+=== SYSTEM ARCHITECTURE ===
+
+At the core of the system is a hub server which in the current
+implementation runs on an embedded GNU/Linux computer. The hub server
+connects to various modules other network links and is also able to
+emulate certain modules in software running on localhost. Modules perform
+a handshake with the hub server before sending commands to it using an
+ASCII line-based protocol. In order to publish feeds on the hub server
+the modules must be paired, this involves establishing a shared secret
+with the hub server and should not be confused with bluetooth pairing
+or any other underlying transport layer equivalent.
+
+Once the handshake is complete, a module that is paired may subscribe to
+a private feed or may publish a feed. Unpaired modules may only subscribe
+to public feeds and may not publish feeds.
+
+Feeds come in two basic types: event-based and binary streams. Event
+feeds consist of a series of JSON objects and in some situations may
+be published to by multiple endpoints while binary streams may only be
+published to by one endpoint at a time and consist of a raw stream of
+binary data.
+
+It is intended that binary streams will be used for things such as
+audio I/O, EEG readings and other such sources of data where JSON
+encoding/decoding would be too computationally expensive.  As an example,
+audio data representing a user's voice may be published to a stream that
+is then subscribed to by a speech recognition module and the speech
+recognition module would then publish an event stream containing the
+decoded speech in text.
+
+
+
+=== ERRORS ====
+
+At any time other than when sending a remote module a binary stream
+(in which case the connection will simply be terminated) the hub server
+may send an error response to the remote module using the following line:
+
+ERROR: <errormsg>
+
+<errormsg> is a human readable error message - in later versions of the
+protocol an error number will be assigned
+
+After sending an error response, the hub server will always terminate
+the connection immediately. In most cases, the remote module may retry
+but must go through the handshake protocol again.
+
+
+
+
+=== HANDSHAKE PROTOCOL ===
+
+
+Upon connecting to the hub over a transport channel, the following
+response is sent as an ASCII line:
+
+CyborgNet <hostinfo> protocol <version>
+
+<hostinfo> is a string giving human-readable information about the
+hub server, such as what software it is using or a hostname. It may be
+entirely blank.  <version> represents the protocol version number in
+major.minor format (e.g 0.1)
+
+Protocol changes that retain backward compatibility will increase the
+minor number, while changes that break backwards compatibility will
+increase the major number and reset the minor to 0.
+
+The remote module responds by sending its own version number in ASCII
+to the hub server on one line.
+
+If the remote module's protocol version is higher than the hub server's
+protocol version it should either downgrade if possible or close the
+link. The same goes for the hub server - if the hub server's protocol
+version is higher than the remote module's protocol version it should
+either downgrade or close the link.
+
+The hub server will respond with the version number it intends to use
+for the connection with the following line:
+
+OK <version>
+
+The hub server will then send the following line to ask the remote module
+if it desires public or private access:
+
+pub/priv?
+
+If the remote module desires only public access, it should respond with
+the following line:
+
+pub
+
+The hub server will then respond with the following:
+
+OK public access
+
+If the remote module desires private access and is paired, it should
+respond with the following line:
+
+priv
+
+The hub server will then send the following line to request the module ID:
+
+ID?
+
+The remote module should respond with its module ID and the server will
+respond by sending a randomly generated string as an authentication
+challenge and requesting an HMAC with the following 2 lines:
+
+<challenge> HMAC?
+
+Upon receiving this, the remote module should sign the challenge using
+an SHA256 HMAC with the shared secret and send it back as a lowercase
+hex digest:
+
+<hmac_digest>
+
+Should authentication succeed, the server will send back the following
+line:
+
+OK private access
+
+After all this, the hub server is ready to accept commands
+
+
+=== COMMANDS ===
+
+Once handshake is complete, a remote module may send various commands - if
+an invalid command is sent the connection will be closed immediately. Most
+commands will also close the connection after executing or will take
+over the channel for data transfer, requiring another connection for
+further commands.
+
+The commands are as follows:
+
+PUB <feedID> <type> <access>
+  Only available to modules with private access, publishes a feed An
+  exception is with public INPUT feeds, which may be published to by
+  unpaired modules
+
+   <feedID> is an ASCII word identifying the feed 
+
+   <type>   is one of "event" or "bin" indicating either an event-based 
+            feed or a binary stream feed 
+
+   <access> is one of "pub" indicating a feed that unpaired modules may 
+            subscribe to or "priv" indicating only paired modules
+            may subscribe
+
+  If the feed is an event-based feed, multiple connections may issue
+  this command. If however it is binary, then only one connection at a
+  time may publish to it and the server will terminate with the following
+  should a module try to publish twice before closing the connection:
+   "ERROR: already publishing binary feed"
+  Once issued the server will respond with the following line (without
+  quotations):
+   "OK feed publishing"
+
+  For an event-based feed, the remote module should send one JSON
+  object per line and the objects will be validated and distributed to
+  subscribers. JSON objects are not guaranteed to be represented in an
+  identical ASCII form when sent to subscribers.
+
+  For a binary stream feed, all bytes written to the connection will be
+  sent to subscribers.
+
+  If the connection closes while publishing, the feed will still remain
+  registered and the remote module may connect again and issue a second
+  PUB command
+
+SUB <feedID>
+  Subscribes to the specified feed
+
+   <feedID> is an ASCII word identifying the feed
+
+  Should the feed not be registered, the hub server will respond with
+  the following line (without quotations):
+    "ERROR: no such feed"
+
+  Should the feed not be public and the remote module not be paired, the
+  hub server will respond with the following line (without quotations):
+   "ERROR: private feed"
+
+  For event based feeds the hub server will respond with the following
+  line:
+   "OK subscribed"
+  JSON events will then be sent one per line - note that they may have
+  been decoded and re-encoded by the hub server
+
+  For binary stream feeds the hub server will simply begin dumping bytes
+  across the connection
+
+INPUT <feedID> <access>
+  Only available to modules with private access, creates an input
+  feed Input feeds are used to receive events from other modules -
+  once registered, any module may publish to them and the module that
+  registered the feed will receive the events
+
+   <feedID> is an ASCII word identifying the feed 
+
+   <access> is one of "pub" or "priv"
+
+  Other modules may publish to the input feed by using the PUB command,
+  <type> MUST be set to "event" and <access> must be the same.
+
+  After issuing this command, the hub server responds with the following 
+  line (without quotations):
+   "OK subscribed to input"
+  JSON events will then be sent one per line as per SUB
+
+  If a module wishes to accept multiple binary input streams it should use
+  an event-based input feed and events should contain event IDs for binary
+  feeds in other modules.
+
+  For example, an audio mixer may accept input on a "new_audio_sources" 
+  event feed and events will be sent to it such as 
+  {"event_type":"new_audio_source","bin_feed_id":"bluetooth_audio"},
+  the audio mixer would then subscribe to the binary feed "bluetooth_audio"
+
+QUERY <serviceID>
+  <serviceID> is an ASCII word representing a service or the wildcard *
+
+  if the remote module does not have private access and the service is
+  private, following is sent back and the connection terminated:
+   "ERROR: private service"
+  if sufficient access rights are in place the server will
+  respond by dumping a copy of the event originally sent to the
+  service_discovery_module's input feeds for *, all available services
+  will have events dumped
+
+=== EVENT FIELDS ===
+
+Events are JSON objects and will have a few standard fields:
+
+ event_type
+  defines a unique event type - MUST be included in all events
+ bin_feed_id
+  specifies a feed ID for a binary feed, used to request another module
+  accept binary input
+ from_mod
+  specifies the module ID this event originated from
+ from_feed
+  specifies the feed ID this event originated from - inserted by the
+  hub server if not already present when merging public events into
+  public_events feed
+ broadcast_id
+  a unique ID used by the send_broadcast feed
+ repeat_beacon
+  boolean value used by send_broadcast feed
+ beacon_ttl
+  TTL (Time To Live) for beacons, used by send_broadcast feed
+
+
+=== STANDARD FEEDS ===
+
+The hub server implements a few basic standard feeds without modules:
+
+public_events
+  public event feed that combines all events from other public event
+  feeds inserts from_feed and from_mod into events
+
+broadcasts
+  private event feed that sends events out from network broadcasts
+  received by the hub server adds the following fields:
+   from_transport - specifies the transport layer the broadcast came from
+                    (usually "ip") 
+   from_addr      - specifies the transport layer address
+                    of the remote hub the broadcast came from
+
+send_broadcast
+   Private input feed used to broadcast an event from the hub server.
+
+   If repeat_beacon is set to true, the event will be stored by the hub
+   server and sent on a regular basis defined by the implementation.
+
+   broadcast_id field MUST be set and MUST be unique for beacons -
+   sending the same broadcast_id twice will result in modifying the
+   stored event.
+   
+   If a stored event is modified so repeat_beacon is set to
+   False, the event will be removed from storage. 
+   
+   Each time the beacon is transmitted, beacon_ttl is 
+   decremented, it is up to the remote module to periodically refresh 
+   the beacon. The exception to this is where beacon_ttl is set to -1, 
+   in which case the beacon will be stored indefinitely - this should 
+   be used with caution.
+
+
+
+=== NETWORK BROADCASTS ===
+
+As seen in standard feeds above, the hub server implements functionality
+for network broadcasts - this will usually be implemented using UDP but
+may be implemented in any manner depending on the underlying transport.
+
+The intention of network broadcasts is to allow cyborgs to locate each
+other on ad-hoc wifi networks and similar networks and to advertise
+presence and capabilities
+
+
+=== STANDARD MODULES ===
+
+The hub server implements a few standard modules:
+
+service_discovery_module
+  allows other modules to advertise services that are more appropriate
+  for other protocols - for example a storage module can advertise an
+  FTP server
+
+  uses the following feeds:
+   advertise_private_service
+    private input event feed, accepts events with the following fields
+    and arbitary extra fields:
+     <service_id>
+       an ASCII word representing the service - should be unique globally
+     <service_type>
+       an ASCII word representing the type of service
+    the extra fields should provide all metadata required to connect
+    and make use of the service
+
+   advertise_public_service
+    private input event feed, same parameters as advertise_private_service
+    but the service will be advertised publically
+
+  This module will routinely send a beacon with the following fields:
+    event_type:   service_advertisement 
+    from_hub:     <transport-layer address of the hub server>
+    pub_services: <list of public service's service IDs>
+
+  This module will also subscribe to the broadcasts feed and maintain
+  a list of remote services.
