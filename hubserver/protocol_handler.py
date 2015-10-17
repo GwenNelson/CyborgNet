@@ -93,17 +93,12 @@ class CyborgNetProtocol(basic.LineReceiver):
            pass
 
 class CyborgNetProtocolFactory(protocol.Factory):
-    def __init__(self):
-        self.clients = set()
+    def __init__(self,hub_core):
+        self.hub_core = hub_core
 
     def buildProtocol(self, addr):
         return CyborgNetProtocol(self)
 
-endpoints.serverFromString(reactor, "tcp:4183").listen(CyborgNetProtocolFactory())
-reactor.run()
 
-feed_public           = {} # maps feed IDs to boolean indicating whether or not the feed is public
-feed_publisher        = {} # maps feed IDs to the module ID that publishes it
-feed_subscribers      = {} # maps feed IDs to subscriber endpoints
-paired_module_secrets = {} # maps paired module IDs to module secrets
+
 

@@ -25,11 +25,34 @@ SOFTWARE.
 """ This file contains a reference implementation of the protocol over TCP that can be used for building software modules
 """
 
+import telnetlib
+
 class CyborgNetClient:
-   def __init__(self,hub_addr=('127.0.0.1',4183),module_id=''):
-       self.hub_addr = hub_addr
-   def set_shared_key(self,shared_key):
+   def __init__(self,hub_addr=('127.0.0.1',4183),module_id='',shared_key='',is_paired=False):
+       self.hub_addr         = hub_addr
+       self.protocol_version = '0.1'
+       self.is_paired        = is_paired
+       self.shared_key       = shared_key
+       self.module_id        = module_id
+   def pair(self,shared_key):
        self.shared_key = shared_key
+       self.is_paired  = True
+   def connect(self):
+       """ Connects a socket and prepares it
+           Returns None on error
+       """
+       conn = telnetlib.Telnet(self.hub_addr[0],self.hub_addr[1])
+       fd   = conn.get_socket().makefile()
+       conn.read_until('protocol')
+       server_ver = fd.readline().strip('\n')
+       fd.write(self.protocol_version + '\n')
+       conn.read_until('pub/priv?')
+       if self.is_paired:
+          pass
+       else:
+          fd.write('pub\n')
+       conn.read_until('OK public access')
+       return conn.get_socket()
    def register_event_feed(self,feed_id='',public=False):
        """ Connects, registers an event feed, disconnects - not very efficient but easy to use to get started
        """

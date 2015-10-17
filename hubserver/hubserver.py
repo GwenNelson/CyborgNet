@@ -22,10 +22,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-from twisted.internet import stdio, reactor
+from twisted.internet import stdio, reactor, endpoints
 from hubshell import HubServerShell
+from protocol_handler import CyborgNetProtocolFactory
+from hubcore import HubServerCore
 from config import *
 
 if __name__=='__main__':
+   hub_core = HubServerCore()
    stdio.StandardIO(HubServerShell())
+   endpoints.serverFromString(reactor, TCP_ENDPOINT).listen(CyborgNetProtocolFactory(hub_core))
    reactor.run()
