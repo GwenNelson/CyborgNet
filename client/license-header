@@ -21,25 +21,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
-
-from enum import Enum
-import sets
-
-class FeedType(Enum):
-   EVENT = 1
-   BIN   = 2
-   INPUT = 3
-
-class CyborgNetFeed:
-   def __init__(self,feed_id='',feed_type=FeedType.EVENT,is_public=False,publisher=None):
-       self.feed_id     = feed_id
-       self.feed_type   = feed_type
-       self.is_public   = is_public
-       self.subscribers = sets.Set()
-       self.publisher   = publisher
-
-class HubServerCore:
-   def __init__(self):
-       self.connections           = []
-       self.feeds                 = {}
-       self.paired_module_secrets = {}
