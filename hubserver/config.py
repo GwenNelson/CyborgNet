@@ -44,4 +44,6 @@ SHELL_HELP = """
  help - display this help message
  exit - shutdown the server
  pair - pair a module
+        takes 2 parameters: <module ID>
+                            <shared secret>
 """

@@ -24,9 +24,13 @@ SOFTWARE.
 
 from config import *
 from twisted.protocols import basic
+from twisted.internet import reactor
+import sys
 
 class HubServerShell(basic.LineReceiver):
     from os import linesep as delimiter
+    def __init__(self,hub_core):
+        self.hub_core = hub_core
     def connectionMade(self):
         self.sendLine(PROTOCOL_GREETING)
         self.sendLine(SHELL_GREETING)
@@ -35,5 +39,14 @@ class HubServerShell(basic.LineReceiver):
     def lineReceived(self, line):
         if line == 'help':
            self.sendLine(SHELL_HELP)
+        if line == 'exit':
+           reactor.stop()
+        if line.startswith('pair'):
+           split_line = line.split()
+           if len(split_line) != 3:
+              self.transport.write('ERROR - command takes 3 parameters!\n')
+           else:
+              self.hub_core.pair_module(split_line[1],split_line[2])
+              self.transport.write('Paired module %s\n' % split_line[1])
         self.transport.write(SHELL_PROMPT)
 

@@ -43,3 +43,5 @@ class HubServerCore:
        self.connections           = []
        self.feeds                 = {}
        self.paired_module_secrets = {}
+   def pair_module(self,module_id,shared_secret):
+       self.paired_module_secrets[module_id] = shared_secret

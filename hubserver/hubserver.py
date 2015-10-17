@@ -30,6 +30,6 @@ from config import *
 
 if __name__=='__main__':
    hub_core = HubServerCore()
-   stdio.StandardIO(HubServerShell())
+   stdio.StandardIO(HubServerShell(hub_core))
    endpoints.serverFromString(reactor, TCP_ENDPOINT).listen(CyborgNetProtocolFactory(hub_core))
    reactor.run()

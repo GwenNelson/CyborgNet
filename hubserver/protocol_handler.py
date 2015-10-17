@@ -6,9 +6,7 @@ from twisted.internet import reactor, protocol, endpoints
 from twisted.protocols import basic
 from enum import Enum
 
-protocol_ver      = '0.1'
-protocol_hostinfo = 'hubserver.py alpha'
-
+from config import *
 
 class ConnectionState(Enum):
    VERSION_NEGOTIATION = 1
