@@ -22,6 +22,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
+
+import hashlib
+import hmac
 from enum import Enum
 import sets
 
@@ -44,4 +47,18 @@ class HubServerCore:
        self.feeds                 = {}
        self.paired_module_secrets = {}
    def pair_module(self,module_id,shared_secret):
+       """ Adds the module as a paired module or updates the shared secret
+       """
        self.paired_module_secrets[module_id] = shared_secret
+   def is_paired(self,module_id):
+       """ Responds with boolean indicating whether or not the module is paired
+       """
+       return self.paired_module_secrets.has_key(module_id)
+   def auth_module(self,module_id,challenge,response):
+       """ Checks if the response to the challenge string is correct
+       """
+       secret       = self.paired_module_secrets[module_id]
+       correct_resp = hmac.new(secret,challenge,hashlib.sha256).hexdigest()
+       if response == correct_resp: return True
+       return False
+

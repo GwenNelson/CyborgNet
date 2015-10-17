@@ -18,29 +18,19 @@ class ConnectionState(Enum):
    BINARY_PUBLISH      = 7
    FEED_SUBSCRIBE      = 8
 
-def gen_ver_greeting():
-    return 'CyborgNet %s protocol %s' % (protocol_hostinfo,protocol_ver)
-
 def gen_challenge_str():
     return hashlib.md5(time.ctime()).hexdigest()
-
-def get_secret(module_id):
-    return ''
-
-def verify_hmac(remote_hmac, secret, challenge):
-    return True
 
 class CyborgNetProtocol(basic.LineReceiver):
     def __init__(self, factory):
         self.factory        = factory
         self.state          = None
         self.challenge      = ""
-        self.secret         = ""
         self.module_id      = ""
         self.private_access = False
 
     def connectionMade(self):
-        self.sendLine(gen_ver_greeting())
+        self.sendLine(PROTOCOL_GREETING)
         self.state = ConnectionState.VERSION_NEGOTIATION
 
     def connectionLost(self, reason):
@@ -48,12 +38,12 @@ class CyborgNetProtocol(basic.LineReceiver):
 
     def lineReceived(self, line):
         if self.state is ConnectionState.VERSION_NEGOTIATION:
-           if line != protocol_ver:
+           if line != '%d.%d' % (PROTOCOL_VERSION_MAJOR,PROTOCOL_VERSION_MINOR):
               self.sendLine("ERROR: Protocol mismatch")
               self.transport.loseConnection()
               self.state = None
            else:
-              self.sendLine("OK protocol version %s" % protocol_ver)
+              self.sendLine("OK protocol version %s" % line)
               self.sendLine("pub/priv?")
               self.state = ConnectionState.PUBLIC_PRIV_SELECT
 
@@ -71,14 +61,18 @@ class CyborgNetProtocol(basic.LineReceiver):
         
         elif self.state is ConnectionState.PRIV_ID_REQUESTED:
            self.module_id = line
-           self.secret    = get_secret(self.module_id)
+           if not self.factory.hub_core.is_paired(line):
+              self.sendLine("ERROR: Authentication error")
+              self.transport.loseConnection()
+              self.state = None
+              return
            self.challenge = gen_challenge_str()
            self.sendLine(self.challenge)
            self.sendLine("HMAC?")
            self.state = ConnectionState.PRIV_CHALLENGE_SENT
 
         elif self.state is ConnectionState.PRIV_CHALLENGE_SENT:
-           if verify_hmac(line, self.secret, self.challenge):
+           if self.factory.hub_core.auth_module(self.module_id, self.challenge, line):
               self.sendLine("OK private access")
               self.private_access = True
               self.state = ConnectionState.AWAITING_COMMAND
