@@ -52,11 +52,11 @@ class CyborgNetProtocol(basic.lineReceiver):
    def __init__(self,factory):
        self.factory = factory
        self.state                       = None
-       self.challenge                   = ""
-       self.module_id                   = ""
-       self.is_paired                   = False
-       self.shared_key                  = ''
-       self.action                      = None
+       self.challenge                   = ''
+       self.module_id                   = self.factory.module_id
+       self.is_paired                   = self.factory.is_paired
+       self.shared_key                  = self.factory.shared_key
+       self.action                      = self.factory.action
        self.protocol_version            = '0.1'
        self.connection_protocol_version = ''
        self.server_hostinfo             = ''
@@ -94,6 +94,16 @@ class CyborgNetProtocol(basic.lineReceiver):
        elif self.state == ConnectionState.SENT_CHALLENGE_HMAC:
           if line.startswith('OK'):
              self.state = ConnectionState.CMD_MODE
+
+class CyborgNetProtocolFactory(protocol.Factory):
+   def __init__(self,action=None,feed_name=None,service_name=None,module_id=None,shared_key=None,event_callback=None):
+       self.action         = action
+       self.feed_name      = feed_name
+       self.module_id      = module_id
+       self.shared_key     = shared_key
+       self.event_callback = event_callback
+   def buildProtocol(self,addr):
+       return CyborgNetProtocol(self)
 
 class CyborgNetClient:
    def __init__(self,hub_addr=('127.0.0.1',4183),module_id='',shared_key='',is_paired=False):
