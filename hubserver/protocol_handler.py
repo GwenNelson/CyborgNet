@@ -82,7 +82,14 @@ class CyborgNetProtocol(basic.LineReceiver):
               self.state = None
 
         elif self.state is ConnectionState.AWAITING_COMMAND:
-           pass
+           if line.startswith('PUB'):
+              if not self.private_access:
+                 self.sendLine('ERROR: Authentication error')
+                 self.transport.loseConnection()
+                 self.state = None
+                 return
+              split_line = line.split()
+              
 
 class CyborgNetProtocolFactory(protocol.Factory):
     def __init__(self,hub_core):
